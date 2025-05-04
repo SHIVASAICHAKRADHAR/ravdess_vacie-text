@@ -103,7 +103,8 @@ def predict_audio_emotion(file):
         # Predict probability distribution over emotion classes
         proba = audio_model.predict(X)
         # Determine the class index with highest probability
-        pred_idx = np.argmax(proba, axis=1)[0]
+        pred_idx = np.argmax(proba[2], axis=1)[0]  # Use the correct index based on your model's outputs
+
         # Decode the predicted class index to original label (RAVDESS emotion code)
         pred_code = emotion_enc.inverse_transform([pred_idx])[0]
 
