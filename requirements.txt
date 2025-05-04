@@ -1,6 +1,6 @@
-streamlit==1.16.0
-tensorflow==2.16.0
-numpy==1.24.1
-scikit-learn==1.1.3
-pillow==9.1.0
-werkzeug==2.1.2
+streamlit
+tensorflow
+numpy
+scikit-learn
+pillow
+werkzeug
