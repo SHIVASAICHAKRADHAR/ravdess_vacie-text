@@ -1,9 +1,16 @@
+
+pip install matplotlib
 import streamlit as st
 import model_utils as mu
 import numpy as np
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from collections import Counter
 import matplotlib.pyplot as plt
+matplotlib>=3.0.0
+streamlit
+numpy
+tensorflow
+scikit-learn
 
 # Set up the Streamlit app configuration
 st.set_page_config(page_title="Multimodal Emotion Detector", layout="wide")
