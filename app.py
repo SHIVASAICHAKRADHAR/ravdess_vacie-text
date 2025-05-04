@@ -1,49 +1,67 @@
+# -*- coding: utf-8 -*-
 import streamlit as st
 import os
-from model_utils import load_all_encoders, load_models, predict_multimodal
-import numpy as np
+import tempfile
+import traceback
 
-# Set up file upload configuration
-UPLOAD_FOLDER = 'uploads/'
-ALLOWED_EXTENSIONS = {'wav', 'mp3'}
+from model_utils import (
+    load_models,
+    load_all_encoders,
+    predict_multimodal
+)
 
-# Load models and encoders
-encoders, text_encoders = load_all_encoders()
-audio_model, text_model = load_models()
+# Load models and encoders once
+@st.cache_resource
+def load_all():
+    audio_model, text_model = load_models()
+    encoders, text_encoders = load_all_encoders()
+    return audio_model, text_model, encoders, text_encoders
 
-# Utility function to check allowed file extension
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+audio_model, text_model, encoders, text_encoders = load_all()
 
-# Streamlit UI components
-st.title("Multimodal Emotion Prediction")
+# Page config
+st.set_page_config(page_title="Multi-Modal Emotion Detector", layout="centered")
+st.title("🎭 Multi-Modal Emotion Detector")
+st.markdown("Upload a **RAVDESS audio file** (metadata-based) and/or enter **text** to predict emotion.")
 
-# Audio file upload
-audio_file = st.file_uploader("Upload an Audio File", type=['wav', 'mp3'])
+# Input section
+col1, col2 = st.columns(2)
 
-# Text input
-text_input = st.text_area("Enter Text")
+with col1:
+    uploaded_audio = st.file_uploader("Upload RAVDESS `.wav` file (optional)", type=["wav"])
+    audio_path = None
+    if uploaded_audio:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
+            tmp_file.write(uploaded_audio.getbuffer())
+            audio_path = tmp_file.name
 
-# Run prediction when both audio and text are provided
-if audio_file is not None and text_input:
-    # Save uploaded audio file
-    audio_filename = os.path.join(UPLOAD_FOLDER, audio_file.name)
-    with open(audio_filename, "wb") as f:
-        f.write(audio_file.getbuffer())
+with col2:
+    user_text = st.text_area("Enter a sentence for emotion detection (optional)", height=150)
 
-    # Get predictions
-    predictions = predict_multimodal(audio_filename, text_input, audio_model, text_model, encoders, text_encoders)
-    
-    # Display the results
-    st.subheader("Audio Emotion Prediction:")
-    st.write(f"Predicted emotion from audio: {predictions['audio_emotion']}")
-    
-    st.subheader("Text Emotion Prediction:")
-    st.write(f"Predicted emotion from text: {predictions['text_emotion']}")
-    
-    st.subheader("Combined Emotion Prediction:")
-    st.write(f"Final emotion prediction: {predictions['final_emotion']}")
-    
-    # Clean up uploaded file
-    os.remove(audio_filename)
+# Predict button
+if st.button("🔍 Predict"):
+    if not uploaded_audio and not user_text.strip():
+        st.warning("Please upload an audio file or enter text.")
+    else:
+        try:
+            results = predict_multimodal(
+                audio_path if uploaded_audio else None,
+                user_text if user_text.strip() else "",
+                audio_model,
+                text_model,
+                encoders,
+                text_encoders
+            )
+
+            st.subheader("🎯 Predictions")
+            if uploaded_audio:
+                st.success(f"**Audio Metadata Emotion**: {results['audio_emotion']}")
+            if user_text.strip():
+                st.success(f"**Text Emotion**: {results['text_emotion']}")
+            if uploaded_audio and user_text.strip():
+                st.info(f"**Combined Final Emotion**: {results['final_emotion']}")
+
+        except Exception as e:
+            st.error(f"Error during prediction: {str(e)}")
+            st.text(traceback.format_exc())
 
