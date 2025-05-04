@@ -1,82 +1,51 @@
 import streamlit as st
-import model_utils as mu
 import numpy as np
+import librosa
+from model_utils import load_audio_resources, load_text_resources
 from tensorflow.keras.preprocessing.sequence import pad_sequences
-import matplotlib.pyplot as plt
 
-# Set up the app
-st.set_page_config(page_title="Multimodal Emotion Detector", layout="wide")
-st.title("🎤📝 Multimodal Emotion Detection")
+# Load models and encoders
+audio_model, audio_encoders = load_audio_resources()
+text_model, tokenizer, label_encoder_text = load_text_resources()
 
-# Constants
-RAVDESS_EMOTION_MAP = {
-    "01": "neutral", "02": "calm", "03": "happy", "04": "sad",
-    "05": "angry", "06": "fearful", "07": "disgust", "08": "surprised"
-}
+st.title("🎵 Audio & Text Emotion Recognition")
 
-def plot_probabilities(probs, labels, title):
-    """Create probability bar plot"""
-    fig, ax = plt.subplots(figsize=(8, 4))
-    y_pos = np.arange(len(labels))
-    ax.barh(y_pos, probs, align='center')
-    ax.set_yticks(y_pos)
-    ax.set_yticklabels(labels)
-    ax.invert_yaxis()
-    ax.set_title(title)
-    st.pyplot(fig)
+# Upload .wav file
+audio_file = st.file_uploader("Upload a WAV audio file", type=["wav"])
 
-# Create layout
-col1, col2 = st.columns(2)
+# Optional text input
+user_text = st.text_input("Enter a sentence (optional for text-based prediction):")
 
-with col1:
-    st.header("🎤 Audio Input")
-    audio_file = st.file_uploader("Upload RAVDESS Audio (.wav)", type=["wav"])
+# Button
+if st.button("🔍 Predict"):
 
-with col2:
-    st.header("📝 Text Input")
-    text_input = st.text_area("Enter text here", height=150)
-
-# Load models
-try:
-    (audio_model, actor_enc, emotion_enc, intensity_enc, 
-     modality_enc, repetition_enc, statement_enc, vocal_enc) = mu.load_audio_resources()
-    text_model, tokenizer, label_enc_text = mu.load_text_resources()
-    models_loaded = True
-except Exception as e:
-    st.error(f"Failed to load models: {str(e)}")
-    models_loaded = False
-
-if models_loaded:
-    # Process inputs
     if audio_file:
         try:
-            meta = mu.parse_ravdess_filename(audio_file.name)
-            features = [
-                modality_enc.transform([meta["modality"]])[0],
-                vocal_enc.transform([meta["vocal"]])[0],
-                emotion_enc.transform([meta["emotion"]])[0],
-                intensity_enc.transform([meta["intensity"]])[0],
-                statement_enc.transform([meta["statement"]])[0],
-                repetition_enc.transform([meta["repetition"]])[0],
-                actor_enc.transform([meta["actor"]])[0]
-            ]
-            proba = audio_model.predict(np.array([features]))[0]
-            emotion_code = emotion_enc.inverse_transform([np.argmax(proba)])[0]
-            audio_emotion = RAVDESS_EMOTION_MAP.get(emotion_code, emotion_code)
-            
-            st.success(f"Audio Emotion: {audio_emotion.capitalize()}")
-            plot_probabilities(proba, list(RAVDESS_EMOTION_MAP.values()), "Audio Probabilities")
-        except Exception as e:
-            st.error(f"Audio processing error: {str(e)}")
+            # Load audio
+            y, sr = librosa.load(audio_file, sr=22050)
 
-    if text_input:
-        try:
-            seq = tokenizer.texts_to_sequences([text_input])
-            padded = pad_sequences(seq, maxlen=100, padding='post')
-            proba = text_model.predict(padded)[0]
-            text_emotion = label_enc_text.inverse_transform([np.argmax(proba)])[0]
-            
-            st.success(f"Text Emotion: {text_emotion.capitalize()}")
-            plot_probabilities(proba, label_enc_text.classes_, "Text Probabilities")
+            # Extract MFCC features
+            mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40)
+            mfcc_processed = np.mean(mfcc.T, axis=0)
+            mfcc_processed = mfcc_processed.reshape(1, -1)
+
+            # Predict with audio model
+            audio_pred = audio_model.predict(mfcc_processed)
+            emotion_idx = np.argmax(audio_pred)
+            emotion_label = audio_encoders['emotion'].inverse_transform([emotion_idx])[0]
+
+            st.success(f"🎧 Predicted Emotion from Audio: **{emotion_label}**")
+
         except Exception as e:
-            st.error(f"Text processing error: {str(e)}")
+            st.error(f"Error processing audio file: {e}")
+
+    # Optional text model prediction
+    if user_text and tokenizer and text_model:
+        try:
+            seq = tokenizer.texts_to_sequences([user_text])
+            padded = pad_sequences(seq, maxlen=100, padding='post')
+            text_pred = text_model.predict(padded)
+            pred_label = label_encoder_text.inverse_transform([np.argmax(text_pred)])
+            st.success(f"📚 Predicted Emotion from Text: **{pred_label[0]}**")
+        except Exception as e:
+            st.error(f"Error processing text: {e}")
